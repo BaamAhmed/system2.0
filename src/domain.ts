@@ -119,6 +119,22 @@ export const unschedule = (s: State, id: string) => update(s, id, { scheduledFor
 // scheduledFor is kept on completed tasks so on-time stats can use it.
 export const complete = (s: State, id: string, now = new Date()) => update(s, id, { completedAt: now.toISOString() });
 
+/** Undo a completion. It returns to its slot if it had one and a slot is free, otherwise to the backlog, so the cap always holds. */
+export function uncomplete(s: State, id: string): State {
+  const task = s.tasks.find((t) => t.id === id);
+  if (!task?.completedAt) throw new Error('Task is not complete.');
+  const backInSlot = task.scheduledFor !== null && openSlots(s) > 0;
+  return update(s, id, { completedAt: null, scheduledFor: backInSlot ? task.scheduledFor : null });
+}
+
+/** Tasks completed in the last `days` days (today included), newest first. */
+export function recentlyCompleted(s: State, today: string, days = 7): Task[] {
+  const first = addDays(today, -(days - 1));
+  return s.tasks
+    .filter((t) => t.completedAt && toDay(new Date(t.completedAt)) >= first)
+    .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!));
+}
+
 /** Reorder the backlog to match `ids`; other tasks keep their positions. */
 export function reorderBacklog(s: State, ids: string[]): State {
   const byId = new Map(s.tasks.map((t) => [t.id, t]));

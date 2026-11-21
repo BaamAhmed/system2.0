@@ -163,3 +163,37 @@ test('day labels', () => {
   assert.equal(d.dayLabel('2026-11-19', TODAY), 'Overdue since Thu');
   assert.equal(d.dayLabel('2026-11-10', TODAY), 'Overdue since Nov 10');
 });
+
+test('uncomplete: back to its slot when one is free, else to the backlog', () => {
+  let s = withTasks(4);
+  s = sched(sched(sched(s, 't0'), 't1'), 't2');
+  s = d.complete(s, id(s, 't0'), at(TODAY));
+  assert.equal(d.openSlots(s), 1);
+
+  const undone = d.uncomplete(s, id(s, 't0'));
+  assert.equal(d.active(undone).length, 3);
+  assert.equal(undone.tasks.find((t) => t.title === 't0')!.completedAt, null);
+
+  // slot taken in the meantime: it goes to the backlog instead of breaking the cap
+  const full = sched(s, 't3');
+  const back = d.uncomplete(full, id(full, 't0'));
+  assert.equal(d.active(back).length, 3);
+  assert.ok(d.backlog(back).some((t) => t.title === 't0'));
+  assert.throws(() => d.uncomplete(back, id(back, 't0')), /not complete/);
+});
+
+test('uncomplete removes the completion from activity counts', () => {
+  let s = withTasks(1);
+  s = d.complete(s, id(s, 't0'), at(TODAY));
+  assert.deepEqual(d.completionsByDay(s.tasks, TODAY), { [TODAY]: 1 });
+  s = d.uncomplete(s, id(s, 't0'));
+  assert.deepEqual(d.completionsByDay(s.tasks, TODAY), {});
+});
+
+test('recently completed: last 7 days, newest first', () => {
+  let s = withTasks(3);
+  s = d.complete(s, id(s, 't0'), at('2026-11-15')); // 6 days ago: in
+  s = d.complete(s, id(s, 't1'), at('2026-11-14')); // 7 days ago: out
+  s = d.complete(s, id(s, 't2'), at(TODAY));
+  assert.deepEqual(d.recentlyCompleted(s, TODAY).map((t) => t.title), ['t2', 't0']);
+});
