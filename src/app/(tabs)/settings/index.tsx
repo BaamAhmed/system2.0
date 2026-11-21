@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
@@ -10,7 +10,7 @@ import { colors, rounded } from '../../../theme';
 import { Icon } from '../../../ui';
 
 export default function Settings() {
-  const { horizonDays } = useAppState();
+  const { horizonDays, tags } = useAppState();
   const step = (d: number) => act((s) => setHorizon(s, s.horizonDays + d));
 
   return (
@@ -32,6 +32,16 @@ export default function Settings() {
         </Row>
       </Group>
       <Text style={st.foot}>How far ahead a task can be scheduled, counting from today.</Text>
+
+      <Group style={{ marginTop: 26 }}>
+        <Row icon="tag" label="Tags" onPress={() => router.push('/settings/tags')}>
+          <View style={{ flexDirection: 'row', gap: 3 }}>
+            {tags.slice(0, 6).map((t) => <View key={t.id} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.color }} />)}
+          </View>
+          <Icon name="chevron.right" size={14} color={colors.tertiary} />
+        </Row>
+      </Group>
+      <Text style={st.foot}>Tags color the dots in your widgets. Tasks without a tag stay white.</Text>
 
       <Group style={{ marginTop: 26 }}>
         <Row icon="square.and.arrow.up" label="Export backup" onPress={exportBackup} />

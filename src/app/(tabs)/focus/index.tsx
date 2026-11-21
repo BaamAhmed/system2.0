@@ -1,10 +1,10 @@
 import { Link, router, Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { active, addDays, complete, dayLabel, fromDay, isOverdue, MAX_ACTIVE, unschedule, type Task } from '../../../domain';
+import { active, addDays, complete, dayLabel, fromDay, isOverdue, MAX_ACTIVE, tagOf, unschedule, type Task } from '../../../domain';
 import { act, useAppState, useToday } from '../../../store';
 import { colors, rounded } from '../../../theme';
-import { CapsuleButton, CheckButton, SlotMeter, s as ui } from '../../../ui';
+import { CapsuleButton, CheckButton, SlotMeter, TagLine, s as ui } from '../../../ui';
 
 const completeTask = (id: string) => {
   if (!act((s) => complete(s, id))) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -47,13 +47,17 @@ export default function Focus() {
 
 function SlotCard({ task, today }: { task: Task; today: string }) {
   const overdue = isOverdue(task, today);
+  const tag = tagOf(useAppState(), task);
   return (
     // Tap reschedules; long press opens the native context menu.
     <Link href={{ pathname: '/schedule', params: { id: task.id } }} asChild>
       <Link.Trigger>
         <Pressable style={st.card}>
           <View style={st.cardTop}>
-            <Text style={[st.when, overdue && { color: colors.red, fontWeight: '600' }]}>{dayLabel(task.scheduledFor!, today)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 }}>
+              <Text style={[st.when, overdue && { color: colors.red, fontWeight: '600' }]}>{dayLabel(task.scheduledFor!, today)}</Text>
+              {tag && <TagLine tag={tag} />}
+            </View>
             <CheckButton overdue={overdue} label={task.title} onPress={() => completeTask(task.id)} />
           </View>
           <Text style={st.title}>{task.title}</Text>

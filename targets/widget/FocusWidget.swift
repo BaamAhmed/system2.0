@@ -40,8 +40,12 @@ struct FocusView: View {
       SlotMeter(entry: entry)
       ForEach(tasks, id: \.self) { t in
         VStack(alignment: .leading, spacing: 2) {
-          Text(t.title).font(.system(size: 15, weight: .semibold)).lineLimit(tasks.count > 2 ? 1 : 2)
+          HStack(spacing: 6) {
+            Circle().fill(t.dot).frame(width: 7, height: 7)
+            Text(t.title).font(.system(size: 15, weight: .semibold)).lineLimit(tasks.count > 2 ? 1 : 2)
+          }
           Text(Day.short(t.scheduledFor, today: entry.today)).font(.system(size: 12, weight: .medium)).foregroundStyle(whenColor(t))
+            .padding(.leading, 13)
         }
       }
       Spacer(minLength: 0)
@@ -76,7 +80,7 @@ struct FocusView: View {
       VStack(alignment: .leading, spacing: 14) {
         ForEach(0..<maxActive, id: \.self) { i in
           if i < tasks.count {
-            timelineRow(dot: entry.isOverdue(tasks[i]) ? red : .primary, title: tasks[i].title,
+            timelineRow(dot: tasks[i].dot, title: tasks[i].title,
                         when: Day.short(tasks[i].scheduledFor, today: entry.today).replacingOccurrences(of: "Overdue since ", with: "Overdue, "),
                         whenColor: whenColor(tasks[i]))
           } else {
@@ -116,7 +120,10 @@ struct FocusView: View {
       ForEach(0..<maxActive, id: \.self) { i in
         if i > 0 { Divider() }
         HStack(alignment: .top, spacing: 14) {
-          Text("\(i + 1)").font(.system(size: 13, weight: .semibold)).roundedNumbers().foregroundStyle(.tertiary).frame(width: 10)
+          Group {
+            if i < tasks.count { Circle().fill(tasks[i].dot) } else { Circle().strokeBorder(.tertiary, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2])) }
+          }
+          .frame(width: 10, height: 10).padding(.top, 3)
           slotText(i < tasks.count ? tasks[i] : nil, titleSize: 22)
           Spacer(minLength: 0)
         }
@@ -158,7 +165,10 @@ struct FocusView: View {
   private func slotText(_ t: Snapshot.Task?, titleSize: CGFloat) -> some View {
     VStack(alignment: .leading, spacing: 3) {
       if let t {
-        Text(Day.long(t.scheduledFor, today: entry.today)).font(.system(size: 13, weight: .semibold)).foregroundStyle(whenColor(t))
+        HStack(spacing: 7) {
+          if family == .systemExtraLarge { Circle().fill(t.dot).frame(width: 9, height: 9) }
+          Text(Day.long(t.scheduledFor, today: entry.today)).font(.system(size: 13, weight: .semibold)).foregroundStyle(whenColor(t))
+        }
         Text(t.title).font(.system(size: titleSize, weight: .semibold)).lineLimit(2)
         Spacer(minLength: 0)
         Text(Day.format(t.scheduledFor, "EEEMMMd")).font(.system(size: 13)).foregroundStyle(.secondary)

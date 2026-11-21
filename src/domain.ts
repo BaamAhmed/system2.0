@@ -8,10 +8,14 @@ export type Task = {
   createdAt: string; // ISO timestamp
   scheduledFor: string | null; // 'YYYY-MM-DD' (local day)
   completedAt: string | null; // ISO timestamp
+  tagId?: string;
 };
+
+export type Tag = { id: string; name: string; color: string };
 
 export type State = {
   tasks: Task[]; // backlog order = array order
+  tags: Tag[];
   horizonDays: number;
 };
 
@@ -20,7 +24,14 @@ export const HORIZON_MIN = 1;
 export const HORIZON_MAX = 30;
 export const FULL_MESSAGE = '3 of 3 slots used: finish or unschedule a task first.';
 
-export const initialState: State = { tasks: [], horizonDays: 7 };
+export const initialState: State = { tasks: [], tags: [], horizonDays: 7 };
+
+/** 24 evenly bright hues (OKLCH L≈0.72). Red is left out: it means overdue and drives the heatmap. */
+export const TAG_COLORS = [
+  '#FE7802', '#EA8A0A', '#D99605', '#C89F07', '#B6A708', '#A0B00F', '#7DBA0C', '#4EC14A',
+  '#02C375', '#0CC096', '#14BEAB', '#07BCBD', '#12B9CE', '#17B6DF', '#01B1F7', '#4FAAFE',
+  '#73A3FD', '#8B9BFF', '#A292FE', '#B986FE', '#D17AF4', '#E273DF', '#F16DC6', '#FC69AB',
+];
 
 // ---------- days ('YYYY-MM-DD', local time) ----------
 
@@ -87,15 +98,20 @@ const update = (s: State, id: string, patch: Partial<Task>): State => {
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-export function addTask(s: State, title: string, now = new Date()): State {
+export function addTask(s: State, title: string, now = new Date(), tagId?: string): State {
   const clean = title.trim();
   if (!clean) throw new Error('Title is required.');
   const task: Task = { id: newId(), title: clean, createdAt: now.toISOString(), scheduledFor: null, completedAt: null };
+  if (tagId && s.tags.some((t) => t.id === tagId)) task.tagId = tagId;
   return { ...s, tasks: [...s.tasks, task] };
 }
 
-export function editTask(s: State, id: string, fields: { title?: string; notes?: string }): State {
+export function editTask(s: State, id: string, fields: { title?: string; notes?: string; tagId?: string | null }): State {
   const patch: Partial<Task> = {};
+  if (fields.tagId !== undefined) {
+    if (fields.tagId !== null && !s.tags.some((t) => t.id === fields.tagId)) throw new Error('Tag not found.');
+    patch.tagId = fields.tagId ?? undefined;
+  }
   if (fields.title !== undefined) {
     if (!fields.title.trim()) throw new Error('Title is required.');
     patch.title = fields.title.trim();
@@ -142,6 +158,37 @@ export function reorderBacklog(s: State, ids: string[]): State {
   if (queue.length !== backlog(s).length) throw new Error('Reorder must include every backlog task.');
   return { ...s, tasks: s.tasks.map((t) => (isBacklog(t) ? queue.shift()! : t)) };
 }
+
+// ---------- tags ----------
+
+const cleanTagName = (s: State, name: string, exceptId?: string) => {
+  const clean = name.trim();
+  if (!clean) throw new Error('Tag name is required.');
+  if (s.tags.some((t) => t.id !== exceptId && t.name.toLowerCase() === clean.toLowerCase())) throw new Error(`There’s already a tag called “${clean}”.`);
+  return clean;
+};
+
+export function addTag(s: State, name: string, color: string): State {
+  return { ...s, tags: [...s.tags, { id: newId(), name: cleanTagName(s, name), color }] };
+}
+
+export function editTag(s: State, id: string, fields: { name?: string; color?: string }): State {
+  if (!s.tags.some((t) => t.id === id)) throw new Error('Tag not found.');
+  const name = fields.name === undefined ? undefined : cleanTagName(s, fields.name, id);
+  return { ...s, tags: s.tags.map((t) => (t.id === id ? { ...t, ...(name ? { name } : {}), ...(fields.color ? { color: fields.color } : {}) } : t)) };
+}
+
+/** Deleting a tag keeps its tasks; they just become untagged. */
+export function deleteTag(s: State, id: string): State {
+  return {
+    ...s,
+    tags: s.tags.filter((t) => t.id !== id),
+    tasks: s.tasks.map((t) => (t.tagId === id ? { ...t, tagId: undefined } : t)),
+  };
+}
+
+export const tagOf = (s: State, t: Task) => (t.tagId ? s.tags.find((g) => g.id === t.tagId) : undefined);
+export const openTaskCount = (s: State, tagId: string) => s.tasks.filter((t) => t.tagId === tagId && !t.completedAt).length;
 
 export function setHorizon(s: State, days: number): State {
   return { ...s, horizonDays: Math.min(HORIZON_MAX, Math.max(HORIZON_MIN, Math.round(days))) };
@@ -232,7 +279,7 @@ export const sumRange = (counts: Record<string, number>, from: string, to: strin
 export type Snapshot = {
   today: string;
   openSlots: number;
-  active: { title: string; scheduledFor: string; overdue: boolean }[];
+  active: { title: string; scheduledFor: string; overdue: boolean; color?: string }[]; // color: the task's tag, if any
   counts: Record<string, number>; // last ~365 days, non-zero only
   bestStreak: number;
 };
@@ -244,7 +291,10 @@ export function buildSnapshot(s: State, today: string): Snapshot {
   return {
     today,
     openSlots: openSlots(s),
-    active: active(s).map((t) => ({ title: t.title, scheduledFor: t.scheduledFor!, overdue: isOverdue(t, today) })),
+    active: active(s).map((t) => {
+      const color = tagOf(s, t)?.color;
+      return { title: t.title, scheduledFor: t.scheduledFor!, overdue: isOverdue(t, today), ...(color ? { color } : {}) };
+    }),
     counts,
     bestStreak: bestStreak(counts),
   };
@@ -264,6 +314,12 @@ export function parseBackup(json: string): State {
     throw new Error('This file isn’t valid JSON.');
   }
   if (!data || !Array.isArray(data.tasks)) throw new Error('This file isn’t a system2.0 backup.');
+  const tags: Tag[] = (Array.isArray(data.tags) ? data.tags : []).map((g: any, i: number) => {
+    if (!g || typeof g.id !== 'string' || typeof g.name !== 'string' || !g.name.trim() || typeof g.color !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(g.color))
+      throw new Error(`Tag ${i + 1} in this file is malformed.`);
+    return { id: g.id, name: g.name, color: g.color };
+  });
+  const tagIds = new Set(tags.map((g) => g.id));
   const seen = new Set<string>();
   const tasks: Task[] = data.tasks.map((t: any, i: number) => {
     const ok =
@@ -275,10 +331,13 @@ export function parseBackup(json: string): State {
       (t.completedAt === null || isIso(t.completedAt));
     if (!ok) throw new Error(`Task ${i + 1} in this file is malformed.`);
     seen.add(t.id);
-    return { id: t.id, title: t.title, ...(t.notes ? { notes: t.notes } : {}), createdAt: t.createdAt, scheduledFor: t.scheduledFor, completedAt: t.completedAt };
+    return {
+      id: t.id, title: t.title, ...(t.notes ? { notes: t.notes } : {}), createdAt: t.createdAt, scheduledFor: t.scheduledFor, completedAt: t.completedAt,
+      ...(typeof t.tagId === 'string' && tagIds.has(t.tagId) ? { tagId: t.tagId } : {}),
+    };
   });
   if (tasks.filter(isActive).length > MAX_ACTIVE) throw new Error('This backup has more than 3 scheduled tasks.');
-  return setHorizon({ tasks, horizonDays: 7 }, typeof data.horizonDays === 'number' ? data.horizonDays : 7);
+  return setHorizon({ tasks, tags, horizonDays: 7 }, typeof data.horizonDays === 'number' ? data.horizonDays : 7);
 }
 
 export const serializeBackup = (s: State) => JSON.stringify({ app: 'system2.0', version: 1, ...s }, null, 2);
