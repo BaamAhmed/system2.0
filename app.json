@@ -3,7 +3,7 @@
     "name": "System 2.0",
     "slug": "system2",
     "scheme": "system2",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -23,7 +23,10 @@
         "dark": "./assets/icon-dark.png",
         "tinted": "./assets/icon-tinted.png"
       },
-      "appleTeamId": "G74QLXZJU6"
+      "appleTeamId": "G74QLXZJU6",
+      "infoPlist": {
+        "NSSupportsLiveActivities": true
+      }
     },
     "plugins": [
       "expo-router",

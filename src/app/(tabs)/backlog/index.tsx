@@ -5,7 +5,7 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { LayoutAnimation, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import ReorderableList, { reorderItems, useReorderableDrag } from 'react-native-reorderable-list';
-import { active, addTask, backlog, complete, deleteTask, FULL_MESSAGE, isOverdue, openSlots, recentlyCompleted, reorderBacklog, tagOf, uncomplete, type Task } from '../../../domain';
+import { active, addTask, backlog, complete, deleteTask, FULL_MESSAGE, isOverdue, openSlots, recentlyCompleted, reorderBacklog, tagOf, formatDuration, taskFocusSeconds, uncomplete, type Task } from '../../../domain';
 import { act, useAppState, useToday } from '../../../store';
 import { colors, rounded } from '../../../theme';
 import { CheckButton, Icon, SlotMeter, TagLine, TagRow } from '../../../ui';
@@ -131,7 +131,9 @@ function DoneRow({ task }: { task: Task }) {
 }
 
 function Row({ task, full }: { task: Task; full: boolean }) {
-  const tag = tagOf(useAppState(), task);
+  const state = useAppState();
+  const tag = tagOf(state, task);
+  const focused = taskFocusSeconds(state, task.id);
   const drag = useReorderableDrag();
   const swipe = useRef<SwipeableMethods>(null);
   const run = (fn: () => void) => {
@@ -177,9 +179,15 @@ function Row({ task, full }: { task: Task; full: boolean }) {
         />
         <View style={st.rowBody}>
           <Text style={st.rowTitle}>{task.title}</Text>
-          {tag || task.notes ? (
+          {tag || task.notes || focused > 0 ? (
             <View style={st.rowMeta}>
               {tag && <TagLine tag={tag} />}
+              {focused > 0 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Icon name="clock" size={12} color={colors.secondary} />
+                  <Text style={[rounded, { fontSize: 13, color: colors.secondary }]}>{formatDuration(focused)}</Text>
+                </View>
+              )}
               {task.notes ? <Text style={st.rowNotes} numberOfLines={1}>{task.notes}</Text> : null}
             </View>
           ) : null}
