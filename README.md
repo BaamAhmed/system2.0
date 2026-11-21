@@ -6,7 +6,7 @@ Built with Expo (SDK 58, TypeScript, Expo Router) plus a native WidgetKit extens
 
 ## Install on your iPhone or iPad
 
-You need a Mac with **Xcode 26+**, **Node 22+**, **pnpm** (`corepack enable` picks up the version pinned in `package.json`) and **CocoaPods** (`brew install cocoapods`), plus a device on **iOS 17+** (the app itself runs on 16.4+, the widgets need 17).
+You need a Mac with **Xcode 26+**, **Node 22+**, **pnpm** (`corepack enable` picks up the version pinned in `package.json`) and **CocoaPods 1.17+** (`brew install cocoapods`, or `brew upgrade cocoapods`), plus a device on **iOS 17+** (the app itself runs on 16.4+, the widgets need 17).
 
 ### 1. Install dependencies
 
@@ -25,7 +25,7 @@ The widget's bundle ID (`<bundle id>.widget`) and its App Group entitlement are 
 
 If Xcode says *"An Application Group with Identifier … is not available"*, that group is already registered by another Apple account: pick a different bundle ID / group and prebuild again.
 
-Optional: add `"appleTeamId": "XXXXXXXXXX"` under `ios` in `app.json` so prebuild fills in your team for both targets (find the ID in Xcode → Settings → Accounts, or on developer.apple.com).
+Recommended: add `"appleTeamId": "XXXXXXXXXX"` under `ios` in `app.json` so prebuild fills in your team for both targets and you don't have to edit signing in Xcode (find the ID in Xcode → Settings → Accounts, or on developer.apple.com).
 
 ### 3. Generate the Xcode project
 
@@ -46,6 +46,8 @@ xed ios
    - Tick **Automatically manage signing**.
    - Choose your **Team**.
 3. Still under Signing & Capabilities, check that **App Groups** shows your group (e.g. `group.com.yourname.system2.shared`) **ticked on both targets**. Prebuild writes the entitlement; Xcode registers the group with Apple the first time it signs. If the group shows in red, click the refresh button under the list, or untick and re-tick it.
+
+If `pod install` later fails with *"Unable to find compatibility version string for object version `70`"*, Xcode re-saved the project in a newer format than your CocoaPods understands. Run `brew upgrade cocoapods`, or regenerate with `pnpm expo prebuild -p ios --clean`.
 
 ### 5. Run on the device
 
