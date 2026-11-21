@@ -16,12 +16,14 @@ pnpm install
 
 ### 2. Pick your own identifiers
 
-Bundle IDs and App Group IDs are unique across all Apple accounts, so replace `dev.system2.app` with something of your own, e.g. `com.yourname.system2`. Change it in **two** places:
+Bundle IDs and App Group IDs are unique across **all** Apple accounts, so replace `dev.system2.app` with something of your own, e.g. `com.yourname.system2`. Both live in `app.json`:
 
-- `app.json`: `ios.bundleIdentifier`, and the App Group under `ios.entitlements` → `com.apple.security.application-groups` (keep the form `group.<bundle id>.shared`).
-- `targets/widget/Shared.swift`: `appGroup` must equal that same App Group string.
+- `ios.bundleIdentifier`: your bundle ID.
+- `ios.entitlements` → `com.apple.security.application-groups`: `group.<your bundle id>.shared`. Keep exactly this form; the widget derives the group from its own bundle ID with the same pattern.
 
 The widget's bundle ID (`<bundle id>.widget`) and its App Group entitlement are derived from `app.json` automatically.
+
+If Xcode says *"An Application Group with Identifier … is not available"*, that group is already registered by another Apple account: pick a different bundle ID / group and prebuild again.
 
 Optional: add `"appleTeamId": "XXXXXXXXXX"` under `ios` in `app.json` so prebuild fills in your team for both targets (find the ID in Xcode → Settings → Accounts, or on developer.apple.com).
 
