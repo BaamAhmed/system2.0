@@ -154,3 +154,12 @@ test('backup round-trips and rejects bad input', () => {
   const tooMany = { tasks: [0, 1, 2, 3].map((i) => ({ id: `${i}`, title: 'x', createdAt: at(TODAY).toISOString(), scheduledFor: TODAY, completedAt: null })) };
   assert.throws(() => d.parseBackup(JSON.stringify(tooMany)), /more than 3/);
 });
+
+test('day labels', () => {
+  assert.equal(d.dayLabel(TODAY, TODAY), 'Today');
+  assert.equal(d.dayLabel('2026-11-22', TODAY), 'Tomorrow');
+  assert.equal(d.dayLabel('2026-11-25', TODAY), 'Wed 25');
+  assert.equal(d.dayLabel('2026-12-04', TODAY), 'Dec 4');
+  assert.equal(d.dayLabel('2026-11-19', TODAY), 'Overdue since Thu');
+  assert.equal(d.dayLabel('2026-11-10', TODAY), 'Overdue since Nov 10');
+});

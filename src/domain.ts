@@ -38,6 +38,20 @@ export const addDays = (day: string, n: number) => {
 export const daysBetween = (from: string, to: string) =>
   Math.round((fromDay(to).getTime() - fromDay(from).getTime()) / 86_400_000);
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Today", "Tomorrow", "Mon 23", "Dec 4", or "Overdue since Thu" for past days. */
+export function dayLabel(day: string, today: string): string {
+  const d = fromDay(day);
+  const n = daysBetween(today, day);
+  const near = `${WEEKDAYS[d.getDay()]} ${d.getDate()}`;
+  if (n < 0) return `Overdue since ${n >= -6 ? WEEKDAYS[d.getDay()] : `${MONTHS[d.getMonth()]} ${d.getDate()}`}`;
+  if (n === 0) return 'Today';
+  if (n === 1) return 'Tomorrow';
+  return n < 7 ? near : `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
 // ---------- queries ----------
 
 export const isActive = (t: Task) => !t.completedAt && t.scheduledFor !== null;
