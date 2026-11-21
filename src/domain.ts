@@ -16,7 +16,22 @@ export type Tag = { id: string; name: string; color: string };
 export type State = {
   tasks: Task[]; // backlog order = array order
   tags: Tag[];
+  sessions: FocusSession[]; // finished focus timers
+  timer: Timer | null; // the one running or paused timer, if any
   horizonDays: number;
+};
+
+/** Time actually spent focusing on a task (paused time and overrun past zero don't count). */
+export type FocusSession = { id: string; taskId: string; startedAt: string; seconds: number };
+
+/** A focus timer. Elapsed = accruedSec + (now − runStartedAt) while running; paused when runStartedAt is null. */
+export type Timer = {
+  taskId: string;
+  plannedSec: number;
+  startedAt: string; // first start, used for time-of-day stats
+  runStartedAt: string | null;
+  accruedSec: number;
+  updatedAt: string; // last change; the Live Activity's pause button can change it from outside the app
 };
 
 export const MAX_ACTIVE = 3;
@@ -24,7 +39,7 @@ export const HORIZON_MIN = 1;
 export const HORIZON_MAX = 30;
 export const FULL_MESSAGE = '3 of 3 slots used: finish or unschedule a task first.';
 
-export const initialState: State = { tasks: [], tags: [], horizonDays: 7 };
+export const initialState: State = { tasks: [], tags: [], sessions: [], timer: null, horizonDays: 7 };
 
 /** 24 evenly bright hues (OKLCH L≈0.72). Red is left out: it means overdue and drives the heatmap. */
 export const TAG_COLORS = [
@@ -61,6 +76,19 @@ export function dayLabel(day: string, today: string): string {
   if (n === 0) return 'Today';
   if (n === 1) return 'Tomorrow';
   return n < 7 ? near : `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
+const LONG_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Calm due wording for the timer and Live Activity: "Due today", "Due Mon 23", "Due last Thursday". */
+export function dueLabel(day: string, today: string): string {
+  const d = fromDay(day);
+  const n = daysBetween(today, day);
+  if (n === 0) return 'Due today';
+  if (n === 1) return 'Due tomorrow';
+  if (n < 0 && n >= -6) return `Due last ${LONG_WEEKDAYS[d.getDay()]}`;
+  if (n > 0 && n < 7) return `Due ${WEEKDAYS[d.getDay()]} ${d.getDate()}`;
+  return `Due ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
 // ---------- queries ----------
@@ -120,8 +148,9 @@ export function editTask(s: State, id: string, fields: { title?: string; notes?:
   return update(s, id, patch);
 }
 
+/** Deleting a task drops its running timer; its past sessions stay in the stats (as untagged). */
 export function deleteTask(s: State, id: string): State {
-  return { ...s, tasks: s.tasks.filter((t) => t.id !== id) };
+  return { ...s, timer: s.timer?.taskId === id ? null : s.timer, tasks: s.tasks.filter((t) => t.id !== id) };
 }
 
 export function schedule(s: State, id: string, day: string, today: string): State {
@@ -130,10 +159,13 @@ export function schedule(s: State, id: string, day: string, today: string): Stat
   return update(s, id, { scheduledFor: day });
 }
 
-export const unschedule = (s: State, id: string) => update(s, id, { scheduledFor: null });
+// A task leaving Focus ends its timer first, so the focused time is kept.
+const endTimerFor = (s: State, id: string, now: Date) => (s.timer?.taskId === id ? stopTimer(s, now) : s);
+
+export const unschedule = (s: State, id: string, now = new Date()) => update(endTimerFor(s, id, now), id, { scheduledFor: null });
 
 // scheduledFor is kept on completed tasks so on-time stats can use it.
-export const complete = (s: State, id: string, now = new Date()) => update(s, id, { completedAt: now.toISOString() });
+export const complete = (s: State, id: string, now = new Date()) => update(endTimerFor(s, id, now), id, { completedAt: now.toISOString() });
 
 /** Undo a completion. It returns to its slot if it had one and a slot is free, otherwise to the backlog, so the cap always holds. */
 export function uncomplete(s: State, id: string): State {
@@ -274,6 +306,135 @@ export function weekdayAverages(counts: Record<string, number>, today: string, d
 export const sumRange = (counts: Record<string, number>, from: string, to: string) =>
   Object.entries(counts).reduce((a, [d, c]) => (d >= from && d <= to ? a + c : a), 0);
 
+// ---------- focus timers ----------
+
+export const TIMER_MIN = 10;
+export const TIMER_MAX = 180;
+export const TIMER_STEP = 10;
+
+const sec = (a: string | Date, b: Date) => Math.max(0, (b.getTime() - new Date(a).getTime()) / 1000);
+export const timerElapsed = (t: Timer, now = new Date()) => t.accruedSec + (t.runStartedAt ? sec(t.runStartedAt, now) : 0);
+export const timerRemaining = (t: Timer, now = new Date()) => Math.max(0, t.plannedSec - timerElapsed(t, now));
+export const isTimeUp = (t: Timer, now = new Date()) => timerRemaining(t, now) <= 0;
+
+export function startTimer(s: State, taskId: string, minutes: number, now = new Date()): State {
+  if (s.timer) throw new Error('A focus timer is already running.');
+  const task = s.tasks.find((t) => t.id === taskId);
+  if (!task || !isActive(task)) throw new Error('Only tasks on Focus can be timed.');
+  if (minutes < TIMER_MIN || minutes > TIMER_MAX || minutes % TIMER_STEP) throw new Error('Pick between 10 minutes and 3 hours.');
+  const at = now.toISOString();
+  return { ...s, timer: { taskId, plannedSec: minutes * 60, startedAt: at, runStartedAt: at, accruedSec: 0, updatedAt: at } };
+}
+
+const needTimer = (s: State) => {
+  if (!s.timer) throw new Error('No focus timer is running.');
+  return s.timer;
+};
+
+export function pauseTimer(s: State, now = new Date()): State {
+  const t = needTimer(s);
+  if (!t.runStartedAt) return s;
+  return { ...s, timer: { ...t, accruedSec: Math.min(t.plannedSec, timerElapsed(t, now)), runStartedAt: null, updatedAt: now.toISOString() } };
+}
+
+export function resumeTimer(s: State, now = new Date()): State {
+  const t = needTimer(s);
+  if (t.runStartedAt || isTimeUp(t, now)) return s;
+  return { ...s, timer: { ...t, runStartedAt: now.toISOString(), updatedAt: now.toISOString() } };
+}
+
+/** Add time. Any overrun past zero is dropped first, so it never counts as focus. */
+export function extendTimer(s: State, minutes = 10, now = new Date()): State {
+  const t = needTimer(s);
+  const at = now.toISOString();
+  return {
+    ...s,
+    timer: { ...t, accruedSec: Math.min(t.plannedSec, timerElapsed(t, now)), runStartedAt: t.runStartedAt ? at : null, plannedSec: t.plannedSec + minutes * 60, updatedAt: at },
+  };
+}
+
+/** End the timer and record the time focused (capped at the planned length). */
+export function stopTimer(s: State, now = new Date()): State {
+  const t = needTimer(s);
+  const seconds = Math.floor(Math.min(t.plannedSec, timerElapsed(t, now)));
+  const sessions = seconds > 0 ? [...s.sessions, { id: newId(), taskId: t.taskId, startedAt: t.startedAt, seconds }] : s.sessions;
+  return { ...s, timer: null, sessions };
+}
+
+/** Total focused seconds on a task, including the timer in progress. */
+export function taskFocusSeconds(s: State, taskId: string, now = new Date()): number {
+  const past = s.sessions.reduce((a, x) => (x.taskId === taskId ? a + x.seconds : a), 0);
+  return past + (s.timer?.taskId === taskId ? Math.min(s.timer.plannedSec, timerElapsed(s.timer, now)) : 0);
+}
+
+/** "1h 20m", "45m", "2h"; under a minute is "<1m". */
+export function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  if (seconds > 0 && m === 0) return '<1m';
+  const h = Math.floor(m / 60);
+  return h ? (m % 60 ? `${h}h ${m % 60}m` : `${h}h`) : `${m}m`;
+}
+
+/** Countdown text: "24:13" or "1:08:40". */
+export function formatClock(seconds: number): string {
+  const total = Math.max(0, Math.ceil(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const ss = String(total % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+/** Focused seconds per local day (by session start) for the `days` days ending today. */
+export function focusByDay(sessions: FocusSession[], today: string, days = 365): Record<string, number> {
+  const first = addDays(today, -(days - 1));
+  const out: Record<string, number> = {};
+  for (const x of sessions) {
+    const day = toDay(new Date(x.startedAt));
+    if (day >= first && day <= today) out[day] = (out[day] ?? 0) + x.seconds;
+  }
+  return out;
+}
+
+/** Heatmap level for a day's focus: <30m, <1h, <2h, 2h+. */
+export const focusLevel = (seconds: number) => (seconds <= 0 ? 0 : seconds < 1800 ? 1 : seconds < 3600 ? 2 : seconds < 7200 ? 3 : 4);
+
+export const averageSession = (sessions: FocusSession[]) =>
+  sessions.length ? sessions.reduce((a, x) => a + x.seconds, 0) / sessions.length : 0;
+
+/** Average focused time on completed tasks that had any focus. */
+export function perFinishedTask(s: State): number {
+  const totals = s.tasks.filter((t) => t.completedAt).map((t) => taskFocusSeconds(s, t.id)).filter((v) => v > 0);
+  return totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : 0;
+}
+
+/** Focused seconds per tag over the last `days` days, largest first. `tagId: null` = untagged or deleted task. */
+export function focusByTag(s: State, today: string, days = 30): { tagId: string | null; seconds: number }[] {
+  const first = addDays(today, -(days - 1));
+  const byTag = new Map<string | null, number>();
+  for (const x of s.sessions) {
+    if (toDay(new Date(x.startedAt)) < first) continue;
+    const tagId = s.tasks.find((t) => t.id === x.taskId)?.tagId ?? null;
+    const key = tagId && s.tags.some((g) => g.id === tagId) ? tagId : null;
+    byTag.set(key, (byTag.get(key) ?? 0) + x.seconds);
+  }
+  return [...byTag].map(([tagId, seconds]) => ({ tagId, seconds })).sort((a, b) => b.seconds - a.seconds);
+}
+
+export const TIMES_OF_DAY = ['Morning', 'Afternoon', 'Evening', 'Night'] as const;
+
+/** Focused seconds by when sessions started: morning 5–12, afternoon 12–17, evening 17–22, night 22–5. */
+export function focusByTimeOfDay(sessions: FocusSession[], today: string, days = 30): number[] {
+  const first = addDays(today, -(days - 1));
+  const out = [0, 0, 0, 0];
+  for (const x of sessions) {
+    const d = new Date(x.startedAt);
+    if (toDay(d) < first) continue;
+    const h = d.getHours();
+    out[h >= 5 && h < 12 ? 0 : h >= 12 && h < 17 ? 1 : h >= 17 && h < 22 ? 2 : 3] += x.seconds;
+  }
+  return out;
+}
+
 // ---------- widget snapshot ----------
 
 export type Snapshot = {
@@ -337,7 +498,22 @@ export function parseBackup(json: string): State {
     };
   });
   if (tasks.filter(isActive).length > MAX_ACTIVE) throw new Error('This backup has more than 3 scheduled tasks.');
-  return setHorizon({ tasks, tags, horizonDays: 7 }, typeof data.horizonDays === 'number' ? data.horizonDays : 7);
+  const sessions: FocusSession[] = (Array.isArray(data.sessions) ? data.sessions : []).map((x: any, i: number) => {
+    if (!x || typeof x.id !== 'string' || typeof x.taskId !== 'string' || !isIso(x.startedAt) || typeof x.seconds !== 'number' || x.seconds < 0)
+      throw new Error(`Focus session ${i + 1} in this file is malformed.`);
+    return { id: x.id, taskId: x.taskId, startedAt: x.startedAt, seconds: Math.floor(x.seconds) };
+  });
+  const timer = parseTimer(data.timer, tasks);
+  return setHorizon({ tasks, tags, sessions, timer, horizonDays: 7 }, typeof data.horizonDays === 'number' ? data.horizonDays : 7);
+}
+
+/** A stored timer, or null if it's missing, malformed, or no longer points at a task on Focus. */
+export function parseTimer(t: any, tasks: Task[]): Timer | null {
+  const ok =
+    t && typeof t.taskId === 'string' && typeof t.plannedSec === 'number' && t.plannedSec > 0 && isIso(t.startedAt) &&
+    (t.runStartedAt === null || isIso(t.runStartedAt)) && typeof t.accruedSec === 'number' && t.accruedSec >= 0 && isIso(t.updatedAt) &&
+    tasks.some((x) => x.id === t.taskId && isActive(x));
+  return ok ? { taskId: t.taskId, plannedSec: t.plannedSec, startedAt: t.startedAt, runStartedAt: t.runStartedAt, accruedSec: t.accruedSec, updatedAt: t.updatedAt } : null;
 }
 
 export const serializeBackup = (s: State) => JSON.stringify({ app: 'system2.0', version: 1, ...s }, null, 2);

@@ -1,10 +1,12 @@
-import { Link, router, Stack } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { active, addDays, complete, dayLabel, fromDay, isOverdue, MAX_ACTIVE, tagOf, unschedule, type Task } from '../../../domain';
-import { act, useAppState, useToday } from '../../../store';
+import { active, addDays, complete, dayLabel, fromDay, isOverdue, MAX_ACTIVE, tagOf, formatClock, formatDuration, taskFocusSeconds, timerRemaining, unschedule, type Task } from '../../../domain';
+import { act, useAppState, useNow, useToday } from '../../../store';
+import { TimerPanel } from '../../../timer';
 import { colors, rounded } from '../../../theme';
-import { CapsuleButton, CheckButton, SlotMeter, TagLine, s as ui } from '../../../ui';
+import { CapsuleButton, CheckButton, Icon, SlotMeter, TagLine, s as ui } from '../../../ui';
 
 const completeTask = (id: string) => {
   if (!act((s) => complete(s, id))) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -16,11 +18,27 @@ export default function Focus() {
   const today = useToday();
   const tasks = active(state);
   const overdue = tasks.filter((t) => isOverdue(t, today)).length;
+  const now = useNow(!!state.timer);
+  const [timerOpen, setTimerOpen] = useState(false);
+  // Tapping the Live Activity opens system2://focus?timer=1
+  const { timer: openTimer } = useLocalSearchParams<{ timer?: string }>();
+  useEffect(() => {
+    if (openTimer) setTimerOpen(true);
+  }, [openTimer]);
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.bg }} contentContainerStyle={st.content}>
       <Stack.Screen options={{ title: 'Focus' }} />
+      <TimerPanel visible={timerOpen} onClose={() => setTimerOpen(false)} />
       <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon="timer"
+          tintColor={state.timer ? colors.red : undefined}
+          accessibilityLabel={state.timer ? 'Focus timer' : 'Start a focus timer'}
+          onPress={() => setTimerOpen(true)}
+        >
+          {state.timer ? formatClock(timerRemaining(state.timer, now)) : undefined}
+        </Stack.Toolbar.Button>
         <Stack.Toolbar.Button icon="plus" accessibilityLabel="Add a task" onPress={() => router.navigate({ pathname: '/backlog', params: { add: '1' } })} />
       </Stack.Toolbar>
 
@@ -30,7 +48,7 @@ export default function Focus() {
       </View>
 
       <View style={{ gap: 10, marginTop: 20 }}>
-        {tasks.map((t) => <SlotCard key={t.id} task={t} today={today} />)}
+        {tasks.map((t) => <SlotCard key={t.id} task={t} today={today} now={now} />)}
         {Array.from({ length: MAX_ACTIVE - tasks.length }, (_, i) => (
           <View key={i} style={st.openSlot}>
             <Text style={st.when}>Open slot</Text>
@@ -45,9 +63,12 @@ export default function Focus() {
   );
 }
 
-function SlotCard({ task, today }: { task: Task; today: string }) {
+function SlotCard({ task, today, now }: { task: Task; today: string; now: Date }) {
   const overdue = isOverdue(task, today);
-  const tag = tagOf(useAppState(), task);
+  const state = useAppState();
+  const tag = tagOf(state, task);
+  const timing = state.timer?.taskId === task.id ? state.timer : null;
+  const focused = taskFocusSeconds(state, task.id, now);
   return (
     // Tap reschedules; long press opens the native context menu.
     <Link href={{ pathname: '/schedule', params: { id: task.id } }} asChild>
@@ -61,6 +82,17 @@ function SlotCard({ task, today }: { task: Task; today: string }) {
             <CheckButton overdue={overdue} label={task.title} onPress={() => completeTask(task.id)} />
           </View>
           <Text style={st.title}>{task.title}</Text>
+          {timing ? (
+            <View style={st.timeRow}>
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.red }} />
+              <Text style={[st.timeText, { color: colors.red, fontWeight: '600' }]}>{timing.runStartedAt ? `${formatClock(timerRemaining(timing, now))} left` : 'Paused'}</Text>
+            </View>
+          ) : focused > 0 ? (
+            <View style={st.timeRow}>
+              <Icon name="clock" size={13} color={colors.secondary} />
+              <Text style={st.timeText}>{formatDuration(focused)} focused</Text>
+            </View>
+          ) : null}
         </Pressable>
       </Link.Trigger>
       <Link.Menu>
@@ -106,6 +138,8 @@ const st = StyleSheet.create({
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   when: { fontSize: 15, fontWeight: '500', color: colors.secondary },
   title: { fontSize: 24, fontWeight: '600', lineHeight: 28, letterSpacing: -0.4, color: colors.label },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -2 },
+  timeText: { ...rounded, fontSize: 13, color: colors.secondary },
   openSlot: { borderRadius: 26, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.tertiary, padding: 18, paddingTop: 16, gap: 12, minHeight: 106 },
   railCol: { flex: 1, alignItems: 'center', gap: 6 },
   railWd: { fontSize: 12, fontWeight: '500', color: colors.secondary },

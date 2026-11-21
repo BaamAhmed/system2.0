@@ -47,8 +47,8 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * Heatmap whose squares are sized to exactly fill the available width.
  * Columns are weeks (Monday first); days after today stay blank; today is outlined.
  */
-export function HeatGrid({ counts, today, weeks, gap = 3, months = false, dayLabels = false }: {
-  counts: Record<string, number>; today: string; weeks: number; gap?: number; months?: boolean; dayLabels?: boolean;
+export function HeatGrid({ counts, today, weeks, gap = 3, months = false, dayLabels = false, level = heatLevel }: {
+  counts: Record<string, number>; today: string; weeks: number; gap?: number; months?: boolean; dayLabels?: boolean; level?: (v: number) => number;
 }) {
   const [width, setWidth] = useState(0);
   const labelW = dayLabels ? 16 : 0;
@@ -91,7 +91,7 @@ export function HeatGrid({ counts, today, weeks, gap = 3, months = false, dayLab
                         width: sq,
                         height: sq,
                         borderRadius: Math.max(2, sq * 0.26),
-                        backgroundColor: day > today ? 'transparent' : heat(heatLevel(counts[day] ?? 0)),
+                        backgroundColor: day > today ? 'transparent' : heat(level(counts[day] ?? 0)),
                         ...(day === today ? { borderWidth: 1.5, borderColor: colors.label } : null),
                       }}
                     />

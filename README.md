@@ -75,6 +75,10 @@ Long-press the home screen → **Edit** → **Add Widget** → **system2.0**. Th
 
 If Xcode refuses the App Groups capability on a free team, remove it from both targets to get the app itself installed; the app catches the failed widget write and carries on.
 
+## Focus timer and Live Activity
+
+The timer button on Focus starts a timer for one of your scheduled tasks. While it runs, a Live Activity shows the countdown on the Lock Screen and in the Dynamic Island, with a pause/resume button. To stop the timer or add time, open the app. If the Live Activity doesn't appear, check **Settings → system2.0 → Live Activities** on the device.
+
 ## Backups
 
 Everything lives on the device. **Settings → Export backup** saves all tasks as a JSON file through the share sheet (Files, AirDrop…). **Import backup** validates the file, then replaces everything after you confirm. Export before deleting the app or moving to a new device.
@@ -84,7 +88,8 @@ Everything lives on the device. **Settings → Export backup** saves all tasks a
 - `src/domain.ts`: every rule as pure functions (3-slot cap, scheduling horizon, completion, reordering, heatmap counts, streaks, the widget snapshot, backup parsing). The cap is enforced here, not just in the UI.
 - `src/store.ts`: in-memory state saved as one JSON document in `expo-sqlite`'s key-value store. After each change it writes a compact snapshot to the App Group (UserDefaults suite, via `@bacons/apple-targets`' `ExtensionStorage`) and calls `WidgetCenter.reloadAllTimelines()`.
 - `src/app/`: Expo Router screens. Native tabs (Focus, Backlog, Activity, Settings) and form sheets for scheduling and editing.
-- `targets/widget/`: the SwiftUI widgets. They read the snapshot and recompute "Today"/overdue for each timeline entry; there's one entry at each upcoming midnight, so labels roll over even if the app isn't opened.
+- `modules/focus-activity/`: a small local Expo module that starts, updates and ends the focus timer's Live Activity. `FocusActivityShared.swift` (the Live Activity's data shape and the Lock Screen pause button) is symlinked into `targets/widget/` so both targets compile the same definition.
+- `targets/widget/`: the SwiftUI widgets and the focus timer Live Activity (Lock Screen and Dynamic Island). They read the snapshot and recompute "Today"/overdue for each timeline entry; there's one entry at each upcoming midnight, so labels roll over even if the app isn't opened.
 
 ## Development
 

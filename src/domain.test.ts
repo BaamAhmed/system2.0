@@ -240,3 +240,98 @@ test('backup keeps tags and drops references to missing ones', () => {
   assert.equal(d.parseBackup(JSON.stringify(dangling)).tasks[0].tagId, undefined);
   assert.throws(() => d.parseBackup(JSON.stringify({ tasks: [], tags: [{ id: 'a', name: 'x', color: 'red' }] })), /Tag 1/);
 });
+
+const plus = (d: Date, sec: number) => new Date(d.getTime() + sec * 1000);
+
+test('timer: start only on Focus tasks, one at a time, 10 min to 3 h', () => {
+  let s = withTasks(2);
+  s = sched(s, 't0');
+  const t0 = at(TODAY, 9);
+  assert.throws(() => d.startTimer(s, id(s, 't1'), 30, t0), /Only tasks on Focus/);
+  assert.throws(() => d.startTimer(s, id(s, 't0'), 5, t0), /10 minutes/);
+  assert.throws(() => d.startTimer(s, id(s, 't0'), 35, t0), /10 minutes/);
+  s = d.startTimer(s, id(s, 't0'), 30, t0);
+  assert.throws(() => d.startTimer(s, id(s, 't0'), 30, t0), /already running/);
+  assert.equal(d.timerRemaining(s.timer!, plus(t0, 600)), 1200);
+});
+
+test('timer: paused time does not count; overrun is never counted', () => {
+  let s = sched(withTasks(1), 't0');
+  const t0 = at(TODAY, 9);
+  s = d.startTimer(s, id(s, 't0'), 30, t0);
+  s = d.pauseTimer(s, plus(t0, 600)); // 10 min focused
+  assert.equal(d.timerElapsed(s.timer!, plus(t0, 3600)), 600); // paused for 50 min
+  s = d.resumeTimer(s, plus(t0, 3600));
+  assert.ok(!d.isTimeUp(s.timer!, plus(t0, 3600 + 1199)));
+  assert.ok(d.isTimeUp(s.timer!, plus(t0, 3600 + 1200)));
+  s = d.stopTimer(s, plus(t0, 9000)); // long after zero
+  assert.equal(s.timer, null);
+  assert.deepEqual(s.sessions.map((x) => x.seconds), [1800]);
+  assert.equal(d.taskFocusSeconds(s, id(s, 't0')), 1800);
+});
+
+test('timer: +10 min after time is up only adds the new 10 minutes', () => {
+  let s = sched(withTasks(1), 't0');
+  const t0 = at(TODAY, 9);
+  s = d.startTimer(s, id(s, 't0'), 10, t0);
+  s = d.extendTimer(s, 10, plus(t0, 900)); // 5 min overrun is dropped
+  assert.equal(d.timerRemaining(s.timer!, plus(t0, 900)), 600);
+  s = d.stopTimer(s, plus(t0, 1500));
+  assert.equal(s.sessions[0].seconds, 1200);
+});
+
+test('timer: completing or unscheduling the task records the session; deleting drops it', () => {
+  let s = sched(sched(withTasks(2), 't0'), 't1');
+  const t0 = at(TODAY, 9);
+  const done = d.complete(d.startTimer(s, id(s, 't0'), 30, t0), id(s, 't0'), plus(t0, 300));
+  assert.equal(done.timer, null);
+  assert.equal(done.sessions[0].seconds, 300);
+  const back = d.unschedule(d.startTimer(s, id(s, 't1'), 30, t0), id(s, 't1'), plus(t0, 120));
+  assert.equal(back.sessions[0].seconds, 120);
+  const gone = d.deleteTask(d.startTimer(s, id(s, 't1'), 30, t0), id(s, 't1'));
+  assert.equal(gone.timer, null);
+  assert.equal(gone.sessions.length, 0);
+});
+
+test('focus analytics: by day, by tag, by time of day, averages', () => {
+  let s = d.addTag(d.initialState, 'Work', '#4FAAFE');
+  const work = s.tags[0].id;
+  s = d.addTask(s, 'a', at(TODAY), work);
+  s = d.addTask(s, 'b', at(TODAY));
+  s = sched(sched(s, 'a'), 'b');
+  const run = (st: d.State, title: string, start: Date, min: number) => d.stopTimer(d.startTimer(st, id(st, title), 60, start), plus(start, min * 60));
+  s = run(s, 'a', at(TODAY, 9), 40); // morning
+  s = run(s, 'b', at(TODAY, 14), 20); // afternoon
+  s = run(s, 'a', at('2026-11-20', 23), 60); // night, yesterday
+  assert.deepEqual(d.focusByDay(s.sessions, TODAY), { [TODAY]: 3600, '2026-11-20': 3600 });
+  assert.deepEqual(d.focusByTag(s, TODAY), [{ tagId: work, seconds: 6000 }, { tagId: null, seconds: 1200 }]);
+  assert.deepEqual(d.focusByTimeOfDay(s.sessions, TODAY), [2400, 1200, 0, 3600]);
+  assert.equal(d.averageSession(s.sessions), 2400);
+  s = d.complete(s, id(s, 'a'));
+  assert.equal(d.perFinishedTask(s), 6000);
+  assert.deepEqual([0, 60, 1800, 3600, 7200].map(d.focusLevel), [0, 1, 2, 3, 4]);
+});
+
+test('duration and clock formatting', () => {
+  assert.deepEqual([0, 30, 59 * 60, 3600, 4800].map(d.formatDuration), ['0m', '<1m', '59m', '1h', '1h 20m']);
+  assert.deepEqual([1453, 4120, 0.2, 0].map(d.formatClock), ['24:13', '1:08:40', '0:01', '0:00']);
+});
+
+test('due labels for the timer', () => {
+  assert.equal(d.dueLabel(TODAY, TODAY), 'Due today');
+  assert.equal(d.dueLabel('2026-11-22', TODAY), 'Due tomorrow');
+  assert.equal(d.dueLabel('2026-11-23', TODAY), 'Due Mon 23');
+  assert.equal(d.dueLabel('2026-11-19', TODAY), 'Due last Thursday');
+  assert.equal(d.dueLabel('2026-11-10', TODAY), 'Due Nov 10');
+});
+
+test('backup round-trips sessions and the timer; stale timers are dropped', () => {
+  let s = sched(withTasks(1), 't0');
+  s = d.startTimer(s, id(s, 't0'), 30, at(TODAY, 9));
+  s = d.pauseTimer(s, at(TODAY, 10));
+  const back = d.parseBackup(d.serializeBackup(s));
+  assert.deepEqual(back.timer, s.timer);
+  const stale = JSON.parse(d.serializeBackup(s));
+  stale.tasks[0].scheduledFor = null; // task left Focus
+  assert.equal(d.parseBackup(JSON.stringify(stale)).timer, null);
+});
