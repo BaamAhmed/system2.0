@@ -1,9 +1,11 @@
 import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { File, Paths } from 'expo-file-system';
+import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import type { SFSymbol } from 'expo-symbols';
-import { HORIZON_MAX, HORIZON_MIN, setHorizon } from '../../../domain';
-import { act, useAppState } from '../../../store';
+import { HORIZON_MAX, HORIZON_MIN, parseBackup, serializeBackup, setHorizon, toDay } from '../../../domain';
+import { act, getState, replaceState, useAppState } from '../../../store';
 import { colors, rounded } from '../../../theme';
 import { Icon } from '../../../ui';
 
@@ -32,12 +34,47 @@ export default function Settings() {
       <Text style={st.foot}>How far ahead a task can be scheduled, counting from today.</Text>
 
       <Group style={{ marginTop: 26 }}>
+        <Row icon="square.and.arrow.up" label="Export backup" onPress={exportBackup} />
+        <Row icon="square.and.arrow.down" label="Import backup" onPress={importBackup} first={false} />
+      </Group>
+      <Text style={st.foot}>Your tasks never leave this device. Export saves everything as a JSON file. Importing a file replaces all current tasks.</Text>
+
+      <Group style={{ marginTop: 26 }}>
         <Row icon="info.circle" label="Version">
           <Text style={{ fontSize: 17, color: colors.secondary }}>{Constants.expoConfig?.version}</Text>
         </Row>
       </Group>
     </ScrollView>
   );
+}
+
+async function exportBackup() {
+  try {
+    const file = new File(Paths.cache, `system2-backup-${toDay(new Date())}.json`);
+    if (file.exists) file.delete();
+    file.create();
+    await file.write(serializeBackup(getState()));
+    await Share.share({ url: file.uri }); // share sheet: Save to Files, AirDrop, etc.
+  } catch (e) {
+    Alert.alert('Couldn’t export', e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function importBackup() {
+  const pick = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
+  if (pick.canceled) return;
+  let next;
+  try {
+    next = parseBackup(await new File(pick.assets[0].uri).text()); // validated before anything is replaced
+  } catch (e) {
+    Alert.alert('Couldn’t import', e instanceof Error ? e.message : String(e));
+    return;
+  }
+  const n = next.tasks.length;
+  Alert.alert('Replace all tasks?', `This replaces everything in the app with ${n} ${n === 1 ? 'task' : 'tasks'} from the backup.`, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Replace', style: 'destructive', onPress: () => replaceState(next) },
+  ]);
 }
 
 const Group = ({ children, style }: { children: React.ReactNode; style?: object }) => (
