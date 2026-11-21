@@ -20,6 +20,10 @@ export default function RootLayout() {
             options={{ presentation: 'formSheet', sheetAllowedDetents: [0.8, 1], sheetGrabberVisible: true, headerShown: true, headerTransparent: true }}
           />
           <Stack.Screen
+            name="tag"
+            options={{ presentation: 'formSheet', sheetAllowedDetents: [0.75, 1], sheetGrabberVisible: true, headerShown: true, headerTransparent: true }}
+          />
+          <Stack.Screen
             name="task"
             options={{ presentation: 'formSheet', sheetAllowedDetents: [0.5, 1], sheetGrabberVisible: true, headerShown: true, headerTransparent: true, title: 'Edit task' }}
           />

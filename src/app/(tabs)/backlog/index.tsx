@@ -5,10 +5,10 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { LayoutAnimation, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import ReorderableList, { reorderItems, useReorderableDrag } from 'react-native-reorderable-list';
-import { active, addTask, backlog, complete, deleteTask, FULL_MESSAGE, isOverdue, openSlots, recentlyCompleted, reorderBacklog, uncomplete, type Task } from '../../../domain';
+import { active, addTask, backlog, complete, deleteTask, FULL_MESSAGE, isOverdue, openSlots, recentlyCompleted, reorderBacklog, tagOf, uncomplete, type Task } from '../../../domain';
 import { act, useAppState, useToday } from '../../../store';
 import { colors, rounded } from '../../../theme';
-import { CheckButton, Icon, SlotMeter } from '../../../ui';
+import { CheckButton, Icon, SlotMeter, TagLine, TagRow } from '../../../ui';
 
 export default function Backlog() {
   const state = useAppState();
@@ -61,8 +61,10 @@ export default function Backlog() {
 function QuickAdd({ autoFocus }: { autoFocus: boolean }) {
   const [text, setText] = useState('');
   const [focused, setFocused] = useState(false);
+  const [tagId, setTagId] = useState<string | null>(null);
+  const { tags } = useAppState();
   const submit = () => {
-    if (text.trim() && !act((s) => addTask(s, text))) setText('');
+    if (text.trim() && !act((s) => addTask(s, text, new Date(), tagId ?? undefined))) setText('');
   };
   const focus = (on: boolean) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -70,30 +72,48 @@ function QuickAdd({ autoFocus }: { autoFocus: boolean }) {
   };
   return (
     <GlassView isInteractive style={[st.quick, focused && st.quickOpen, !isLiquidGlassAvailable() && { backgroundColor: colors.surface }]}>
-      <TextInput
-        value={text}
-        onChangeText={setText}
-        placeholder="New task"
-        placeholderTextColor={colors.tertiary}
-        multiline // wraps long titles; Return still adds the task
-        returnKeyType="done"
-        submitBehavior="submit" // keep the keyboard up for adding several in a row
-        onSubmitEditing={submit}
-        onFocus={() => focus(true)}
-        onBlur={() => focus(false)}
-        autoFocus={autoFocus}
-        style={[st.quickInput, focused && { minHeight: 66 }]}
-        accessibilityLabel="New task"
-      />
-      <Pressable onPress={submit} disabled={!text.trim()} style={[st.quickBtn, { backgroundColor: text.trim() ? colors.label : colors.fill }]} accessibilityLabel="Add task">
-        <Icon name="arrow.up" size={15} color={text.trim() ? colors.onLabel : colors.secondary} />
-      </Pressable>
+      <View style={[st.quickTop, focused && { paddingHorizontal: 18 }]}>
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          placeholder="New task"
+          placeholderTextColor={colors.tertiary}
+          multiline // wraps long titles; Return still adds the task
+          returnKeyType="done"
+          submitBehavior="submit" // keep the keyboard up for adding several in a row
+          onSubmitEditing={submit}
+          onFocus={() => focus(true)}
+          onBlur={() => focus(false)}
+          autoFocus={autoFocus}
+          style={[st.quickInput, focused && { minHeight: 66 }]}
+          accessibilityLabel="New task"
+        />
+        {!focused && <SendButton text={text} onPress={submit} />}
+      </View>
+      {focused && (
+        <View style={st.quickBottom}>
+          <View style={{ flex: 1 }}>
+            <TagRow tags={tags} selected={tagId} onSelect={setTagId} onNew={() => router.push('/tag')} fade={{ light: '#FAFAFB', dark: '#1E1E20' }} inset={12} />
+          </View>
+          <SendButton text={text} onPress={submit} />
+        </View>
+      )}
     </GlassView>
+  );
+}
+
+function SendButton({ text, onPress }: { text: string; onPress: () => void }) {
+  const on = !!text.trim();
+  return (
+    <Pressable onPress={onPress} disabled={!on} style={[st.quickBtn, { backgroundColor: on ? colors.label : colors.fill }]} accessibilityLabel="Add task">
+      <Icon name="arrow.up" size={15} color={on ? colors.onLabel : colors.secondary} />
+    </Pressable>
   );
 }
 
 /** A task finished in the last 7 days: dimmed and struck through; tapping the check undoes it. */
 function DoneRow({ task }: { task: Task }) {
+  const tag = tagOf(useAppState(), task);
   const undo = () => {
     if (!act((s) => uncomplete(s, task.id))) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
@@ -104,12 +124,14 @@ function DoneRow({ task }: { task: Task }) {
       </Pressable>
       <View style={st.rowBody}>
         <Text style={[st.rowTitle, st.doneTitle]}>{task.title}</Text>
+        {tag && <View style={{ marginTop: 2 }}><TagLine tag={tag} dim /></View>}
       </View>
     </View>
   );
 }
 
 function Row({ task, full }: { task: Task; full: boolean }) {
+  const tag = tagOf(useAppState(), task);
   const drag = useReorderableDrag();
   const swipe = useRef<SwipeableMethods>(null);
   const run = (fn: () => void) => {
@@ -155,7 +177,12 @@ function Row({ task, full }: { task: Task; full: boolean }) {
         />
         <View style={st.rowBody}>
           <Text style={st.rowTitle}>{task.title}</Text>
-          {task.notes ? <Text style={st.rowNotes} numberOfLines={2}>{task.notes}</Text> : null}
+          {tag || task.notes ? (
+            <View style={st.rowMeta}>
+              {tag && <TagLine tag={tag} />}
+              {task.notes ? <Text style={st.rowNotes} numberOfLines={1}>{task.notes}</Text> : null}
+            </View>
+          ) : null}
         </View>
       </Pressable>
     </ReanimatedSwipeable>
@@ -167,14 +194,17 @@ const st = StyleSheet.create({
   meterText: { ...rounded, fontSize: 15, fontWeight: '600', color: colors.secondary },
   fullNote: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.surface, borderRadius: 20, padding: 14, paddingHorizontal: 16 },
   quick: { flexDirection: 'row', alignItems: 'center', minHeight: 50, borderRadius: 25, paddingLeft: 20, paddingRight: 7 },
-  quickOpen: { alignItems: 'flex-end', borderRadius: 22, paddingTop: 10, paddingBottom: 7 },
+  quickOpen: { flexDirection: 'column', alignItems: 'stretch', borderRadius: 24, paddingTop: 10, paddingBottom: 8, paddingLeft: 0, paddingRight: 0 },
+  quickTop: { flexGrow: 1, flexDirection: 'row', alignItems: 'center' },
+  quickBottom: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 8, marginTop: 4 },
   quickInput: { flex: 1, fontSize: 17, lineHeight: 22, color: colors.label, paddingTop: 0, paddingBottom: 0, marginVertical: 7 },
   quickBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingLeft: 20, backgroundColor: colors.bg },
   rowBody: { flex: 1, minHeight: 56, paddingVertical: 14, paddingRight: 20, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
   rowTitle: { fontSize: 17, lineHeight: 22, color: colors.label },
   doneTitle: { color: colors.tertiary, textDecorationLine: 'line-through' },
-  rowNotes: { fontSize: 15, lineHeight: 19, color: colors.secondary, marginTop: 1 },
+  rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2 },
+  rowNotes: { flexShrink: 1, fontSize: 15, lineHeight: 19, color: colors.secondary },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
   action: { width: 52, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   empty: { fontSize: 15, color: colors.secondary, textAlign: 'center', paddingHorizontal: 40, paddingTop: 60 },

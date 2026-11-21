@@ -197,3 +197,46 @@ test('recently completed: last 7 days, newest first', () => {
   s = d.complete(s, id(s, 't2'), at(TODAY));
   assert.deepEqual(d.recentlyCompleted(s, TODAY).map((t) => t.title), ['t2', 't0']);
 });
+
+test('tags: add, rename, recolor; names unique', () => {
+  let s = d.addTag(d.initialState, ' Work ', d.TAG_COLORS[15]);
+  assert.equal(s.tags[0].name, 'Work');
+  assert.throws(() => d.addTag(s, 'work', d.TAG_COLORS[0]), /already a tag/);
+  assert.throws(() => d.addTag(s, '  ', d.TAG_COLORS[0]), /required/);
+  s = d.editTag(s, s.tags[0].id, { name: 'Job', color: d.TAG_COLORS[0] });
+  assert.deepEqual([s.tags[0].name, s.tags[0].color], ['Job', d.TAG_COLORS[0]]);
+});
+
+test('tags: tasks get one tag; deleting a tag untags its tasks', () => {
+  let s = d.addTag(d.initialState, 'Home', d.TAG_COLORS[7]);
+  const tag = s.tags[0].id;
+  s = d.addTask(s, 'Fix tap', at(TODAY), tag);
+  s = d.addTask(s, 'Call mum', at(TODAY));
+  assert.equal(d.tagOf(s, s.tasks[0])?.name, 'Home');
+  assert.equal(d.openTaskCount(s, tag), 1);
+  s = d.editTask(s, id(s, 'Call mum'), { tagId: tag });
+  assert.equal(d.openTaskCount(s, tag), 2);
+  assert.throws(() => d.editTask(s, id(s, 'Call mum'), { tagId: 'nope' }), /Tag not found/);
+  s = d.deleteTag(s, tag);
+  assert.equal(s.tags.length, 0);
+  assert.equal(s.tasks.length, 2);
+  assert.ok(s.tasks.every((t) => t.tagId === undefined));
+});
+
+test('snapshot carries the tag color of active tasks', () => {
+  let s = d.addTag(d.initialState, 'Work', '#4FAAFE');
+  s = d.addTask(s, 'tagged', at(TODAY), s.tags[0].id);
+  s = d.addTask(s, 'plain', at(TODAY));
+  s = sched(sched(s, 'tagged'), 'plain');
+  assert.deepEqual(d.buildSnapshot(s, TODAY).active.map((a) => a.color), ['#4FAAFE', undefined]);
+});
+
+test('backup keeps tags and drops references to missing ones', () => {
+  let s = d.addTag(d.initialState, 'Work', '#4FAAFE');
+  s = d.addTask(s, 'x', at(TODAY), s.tags[0].id);
+  assert.deepEqual(d.parseBackup(d.serializeBackup(s)), s);
+  const dangling = JSON.parse(d.serializeBackup(s));
+  dangling.tags = [];
+  assert.equal(d.parseBackup(JSON.stringify(dangling)).tasks[0].tagId, undefined);
+  assert.throws(() => d.parseBackup(JSON.stringify({ tasks: [], tags: [{ id: 'a', name: 'x', color: 'red' }] })), /Tag 1/);
+});

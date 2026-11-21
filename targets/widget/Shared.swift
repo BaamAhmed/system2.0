@@ -15,6 +15,10 @@ struct Snapshot: Decodable {
     let title: String
     let scheduledFor: String  // "YYYY-MM-DD"
     let overdue: Bool  // as of `today`; widgets recompute it per entry date
+    var color: String? = nil  // tag color "#RRGGBB"; nil = untagged
+
+    /// The task's dot: its tag color, or the plain primary color (white in dark mode) when untagged.
+    var dot: Color { color.flatMap(Color.init(hex:)) ?? .primary }
   }
   let today: String
   let openSlots: Int
@@ -39,8 +43,8 @@ struct Snapshot: Decodable {
     return Snapshot(
       today: today, openSlots: 1,
       active: [
-        .init(title: "Renew passport photos", scheduledFor: Day.add(today, -2), overdue: true),
-        .init(title: "Draft Q1 plan", scheduledFor: today, overdue: false),
+        .init(title: "Renew passport photos", scheduledFor: Day.add(today, -2), overdue: true, color: "#FE7802"),
+        .init(title: "Draft Q1 plan", scheduledFor: today, overdue: false, color: "#4FAAFE"),
       ],
       counts: counts, bestStreak: 14)
   }
@@ -122,6 +126,10 @@ struct Provider: TimelineProvider {
 // MARK: - Shared views
 
 extension Color {
+  init?(hex: String) {
+    guard hex.count == 7, hex.hasPrefix("#"), let v = UInt32(hex.dropFirst(), radix: 16) else { return nil }
+    self.init(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+  }
   static let widgetBackground = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0.11, green: 0.11, blue: 0.118, alpha: 1) : .white })
   static let emptyFill = Color(UIColor.tertiarySystemFill)
   static func heat(_ count: Int) -> Color {

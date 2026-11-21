@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useColorScheme, View, type ViewStyle } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
-import { addDays, fromDay, heatLevel, MAX_ACTIVE, weekStart } from './domain';
+import { addDays, fromDay, heatLevel, MAX_ACTIVE, weekStart, type Tag } from './domain';
 import { colors, heat, rounded } from './theme';
 
 export const Icon = ({ name, color = colors.label, size = 20 }: { name: SFSymbol; color?: any; size?: number }) => (
@@ -140,6 +140,85 @@ export function WeekBars({ values, todayIndex, height = 96 }: { values: (number 
   );
 }
 
+// ---------- tags ----------
+
+export const TagDot = ({ color, size = 7 }: { color: string; size?: number }) => (
+  <View style={{ width: size, height: size, borderRadius: size, backgroundColor: color }} />
+);
+
+/** Small "● Name" line used on rows and cards. */
+export const TagLine = ({ tag, dim }: { tag: Tag; dim?: boolean }) => (
+  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, opacity: dim ? 0.5 : 1 }}>
+    <TagDot color={tag.color} />
+    <Text style={{ fontSize: 13, color: colors.secondary }} numberOfLines={1}>{tag.name}</Text>
+  </View>
+);
+
+/** Subtle pill: tinted fill + dot + name; selected adds a ring in the tag color. */
+export function TagPill({ tag, selected, onPress, label }: { tag?: Tag; selected?: boolean; onPress: () => void; label?: string }) {
+  const c = tag?.color;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      style={[s.pill, { backgroundColor: c ? c + (selected ? '3D' : '1F') : colors.fill }, selected && c ? { borderWidth: 1.5, borderColor: c } : null]}
+    >
+      {c && <TagDot color={c} />}
+      <Text style={s.pillText}>{tag?.name ?? label}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Horizontally scrolling tag pills. The edges fade only while there's more to scroll that way.
+ * `fade` is the color behind the row (gradients need a concrete color, not a dynamic one).
+ */
+export function TagRow({ tags, selected, onSelect, onNew, withNone, fade, inset = 0 }: {
+  tags: Tag[]; selected: string | null; onSelect: (id: string | null) => void; onNew: () => void;
+  withNone?: boolean; fade: { light: string; dark: string }; inset?: number;
+}) {
+  const dark = useColorScheme() === 'dark';
+  const base = dark ? fade.dark : fade.light;
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const [box, setBox] = useState({ w: 0, content: 0, x: 0 });
+  const update = (next: Partial<typeof box>) => {
+    const b = { ...box, ...next };
+    setBox(b);
+    setEdges({ left: b.x > 2, right: b.x + b.w < b.content - 2 });
+  };
+  const edge = (side: 'left' | 'right') => (
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', top: 0, bottom: 0, [side]: 0, width: 36, backgroundImage: `linear-gradient(to ${side === 'left' ? 'right' : 'left'}, ${base}, ${base}00)` }}
+    />
+  );
+  return (
+    <View onLayout={(e) => update({ w: e.nativeEvent.layout.width })}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+        scrollEventThrottle={16}
+        onScroll={(e) => update({ x: e.nativeEvent.contentOffset.x })}
+        onContentSizeChange={(w) => update({ content: w })}
+        contentContainerStyle={{ gap: 8, paddingHorizontal: inset }}
+      >
+        {withNone && <TagPill label="None" selected={selected === null} onPress={() => onSelect(null)} />}
+        {tags.map((t) => (
+          <TagPill key={t.id} tag={t} selected={selected === t.id} onPress={() => onSelect(selected === t.id && !withNone ? null : t.id)} />
+        ))}
+        <Pressable onPress={onNew} style={[s.pill, s.newPill]} accessibilityRole="button" accessibilityLabel="New tag">
+          <Icon name="plus" size={12} color={colors.secondary} />
+          <Text style={[s.pillText, { color: colors.secondary }]}>New tag</Text>
+        </Pressable>
+      </ScrollView>
+      {edges.left && edge('left')}
+      {edges.right && edge('right')}
+    </View>
+  );
+}
+
 export const Card = ({ children, style }: { children: React.ReactNode; style?: ViewStyle }) => (
   <View style={[{ backgroundColor: colors.surface, borderRadius: 26 }, style]}>{children}</View>
 );
@@ -155,4 +234,7 @@ export const s = StyleSheet.create({
   secondary: { fontSize: 15, color: colors.secondary },
   footnote: { fontSize: 13, lineHeight: 18, color: colors.secondary },
   num: { ...rounded, fontWeight: '700', color: colors.label },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 30, paddingHorizontal: 12, borderRadius: 15 },
+  pillText: { fontSize: 14, fontWeight: '600', color: colors.label },
+  newPill: { gap: 4, paddingLeft: 9, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: colors.separator },
 });
