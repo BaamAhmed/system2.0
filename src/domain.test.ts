@@ -307,6 +307,9 @@ test('focus analytics: by day, by tag, by time of day, averages', () => {
   assert.deepEqual(d.focusByTag(s, TODAY), [{ tagId: work, seconds: 6000 }, { tagId: null, seconds: 1200 }]);
   assert.deepEqual(d.focusByTimeOfDay(s.sessions, TODAY), [2400, 1200, 0, 3600]);
   assert.equal(d.averageSession(s.sessions), 2400);
+  const snap = d.buildSnapshot(s, TODAY);
+  assert.deepEqual(snap.focus, { [TODAY]: 3600, '2026-11-20': 3600 });
+  assert.deepEqual(snap.focusTags, [{ name: 'Work', color: '#4FAAFE', seconds: 6000 }, { name: 'No tag', seconds: 1200 }]);
   s = d.complete(s, id(s, 'a'));
   assert.equal(d.perFinishedTask(s), 6000);
   assert.deepEqual([0, 60, 1800, 3600, 7200].map(d.focusLevel), [0, 1, 2, 3, 4]);

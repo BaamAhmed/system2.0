@@ -182,7 +182,7 @@ private func clock(_ seconds: Int) -> String {
 }
 
 /// "1h 20m", "45m" (same as formatDuration in src/domain.ts).
-private func duration(_ seconds: Int) -> String {
+func duration(_ seconds: Int) -> String {
   let m = seconds / 60
   if seconds > 0 && m == 0 { return "<1m" }
   let h = m / 60

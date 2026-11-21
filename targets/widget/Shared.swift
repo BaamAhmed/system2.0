@@ -25,6 +25,15 @@ struct Snapshot: Decodable {
   let active: [Task]
   let counts: [String: Int]
   let bestStreak: Int
+  // Optional so snapshots written before focus widgets existed still decode.
+  var focus: [String: Double]? = nil
+  var focusTags: [FocusTag]? = nil
+
+  struct FocusTag: Decodable, Hashable {
+    let name: String
+    var color: String? = nil
+    let seconds: Double
+  }
 
   static let empty = Snapshot(today: "", openSlots: maxActive, active: [], counts: [:], bestStreak: 0)
 
@@ -46,7 +55,14 @@ struct Snapshot: Decodable {
         .init(title: "Renew passport photos", scheduledFor: Day.add(today, -2), overdue: true, color: "#FE7802"),
         .init(title: "Draft Q1 plan", scheduledFor: today, overdue: false, color: "#4FAAFE"),
       ],
-      counts: counts, bestStreak: 14)
+      counts: counts, bestStreak: 14,
+      focus: Dictionary(uniqueKeysWithValues: [35, 80, 0, 50, 95, 120, 60, 45, 70, 30, 110, 85, 40, 80].enumerated().map {
+        (Day.add(today, $0.offset - 13), Double($0.element * 60))
+      }),
+      focusTags: [
+        .init(name: "Work", color: "#4FAAFE", seconds: 11400), .init(name: "Reading", color: "#A292FE", seconds: 7500),
+        .init(name: "Errands", color: "#FE7802", seconds: 4500), .init(name: "Home", color: "#4EC14A", seconds: 3000),
+      ])
   }
 }
 

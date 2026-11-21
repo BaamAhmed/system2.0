@@ -62,7 +62,7 @@ Same thing from the terminal: `pnpm expo run:ios --device --configuration Releas
 
 ### 6. Add the widgets
 
-Long-press the home screen → **Edit** → **Add Widget** → **system2.0**. There's a **Focus** widget and an **Activity** widget, each in small, medium and large, plus extra large on iPad. Tapping a widget opens its tab.
+Long-press the home screen → **Edit** → **Add Widget** → **system2.0**. There's a **Focus** widget and an **Activity** widget, each in small, medium and large, plus extra large on iPad, and a **Focus time** widget with bar charts of time focused (small: 3 days, medium: 7 days, large: 14 days and time by tag). Tapping a widget opens its tab.
 
 ## Free vs paid Apple developer accounts
 

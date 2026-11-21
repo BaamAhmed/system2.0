@@ -443,6 +443,9 @@ export type Snapshot = {
   active: { title: string; scheduledFor: string; overdue: boolean; color?: string }[]; // color: the task's tag, if any
   counts: Record<string, number>; // last ~365 days, non-zero only
   bestStreak: number;
+  focus: Record<string, number>; // focused seconds per day, last 14 days, non-zero only
+  // shortcut: as of `today`, so it doesn't roll over at midnight like `focus` does; send per-day tag totals if that matters.
+  focusTags: { name: string; color?: string; seconds: number }[]; // last 7 days, largest first
 };
 
 // Widgets recompute day labels/overdue per timeline entry from scheduledFor, so
@@ -458,6 +461,11 @@ export function buildSnapshot(s: State, today: string): Snapshot {
     }),
     counts,
     bestStreak: bestStreak(counts),
+    focus: focusByDay(s.sessions, today, 14),
+    focusTags: focusByTag(s, today, 7).map(({ tagId, seconds }) => {
+      const tag = s.tags.find((g) => g.id === tagId);
+      return tag ? { name: tag.name, color: tag.color, seconds } : { name: 'No tag', seconds };
+    }),
   };
 }
 
