@@ -6,12 +6,12 @@ Built with Expo (SDK 58, TypeScript, Expo Router) plus a native WidgetKit extens
 
 ## Install on your iPhone or iPad
 
-You need a Mac with **Xcode 26+**, **Node 22+** and **CocoaPods** (`brew install cocoapods`), plus a device on **iOS 17+** (the app itself runs on 16.4+, the widgets need 17).
+You need a Mac with **Xcode 26+**, **Node 22+**, **pnpm** (`corepack enable` picks up the version pinned in `package.json`) and **CocoaPods** (`brew install cocoapods`), plus a device on **iOS 17+** (the app itself runs on 16.4+, the widgets need 17).
 
 ### 1. Install dependencies
 
 ```sh
-npm install
+pnpm install
 ```
 
 ### 2. Pick your own identifiers
@@ -28,7 +28,7 @@ Optional: add `"appleTeamId": "XXXXXXXXXX"` under `ios` in `app.json` so prebuil
 ### 3. Generate the Xcode project
 
 ```sh
-npx expo prebuild -p ios --clean
+pnpm expo prebuild -p ios --clean
 ```
 
 This creates `ios/` (git-ignored, never edit it by hand), installs pods, and adds the widget target from `targets/widget`. Re-run it whenever you change `app.json`, `targets/widget/expo-target.config.js`, or add a native dependency.
@@ -54,7 +54,7 @@ xed ios
 5. Press **Run** (⌘R).
 6. Free accounts, first launch only: on the device, **Settings → General → VPN & Device Management** → your Apple ID → **Trust**.
 
-Same thing from the terminal: `npx expo run:ios --device --configuration Release`.
+Same thing from the terminal: `pnpm expo run:ios --device --configuration Release`.
 
 ### 6. Add the widgets
 
@@ -85,9 +85,9 @@ Everything lives on the device. **Settings → Export backup** saves all tasks a
 ## Development
 
 ```sh
-npm test            # domain unit tests (Node's built-in runner)
-npm run typecheck   # TypeScript
-npx expo start      # JS dev server for a Debug build already on the device
+pnpm test           # domain unit tests (Node's built-in runner)
+pnpm typecheck      # TypeScript
+pnpm expo start     # JS dev server for a Debug build already on the device
 ```
 
 Not supported in Expo Go: it needs the native modules and widget extension of a development build.
