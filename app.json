@@ -12,11 +12,18 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.system2.app"
+      "bundleIdentifier": "dev.system2.app",
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.dev.system2.app.shared"
+        ]
+      }
     },
     "plugins": [
       "expo-router",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-sqlite",
+      "@bacons/apple-targets"
     ]
   }
 }
