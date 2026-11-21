@@ -1,8 +1,12 @@
 import SwiftUI
 import WidgetKit
 
-// Must match app.json → ios.entitlements → com.apple.security.application-groups.
-let appGroup = "group.dev.system2.app.shared"
+// The App Group in app.json is "group.<app bundle id>.shared" and this extension's bundle id is
+// "<app bundle id>.widget", so the group is derived here instead of being hard-coded twice.
+let appGroup: String = {
+  let appBundleId = (Bundle.main.bundleIdentifier ?? "").split(separator: ".").dropLast().joined(separator: ".")
+  return "group.\(appBundleId).shared"
+}()
 let maxActive = 3
 
 /// The JSON the app writes to the App Group after every change (see buildSnapshot in src/domain.ts).
