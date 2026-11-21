@@ -2,10 +2,10 @@ import { useRef, useState } from 'react';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { LayoutAnimation, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import ReorderableList, { reorderItems, useReorderableDrag } from 'react-native-reorderable-list';
-import { active, addTask, backlog, complete, deleteTask, FULL_MESSAGE, isOverdue, openSlots, reorderBacklog, type Task } from '../../../domain';
+import { active, addTask, backlog, complete, deleteTask, FULL_MESSAGE, isOverdue, openSlots, recentlyCompleted, reorderBacklog, uncomplete, type Task } from '../../../domain';
 import { act, useAppState, useToday } from '../../../store';
 import { colors, rounded } from '../../../theme';
 import { CheckButton, Icon, SlotMeter } from '../../../ui';
@@ -18,6 +18,7 @@ export default function Backlog() {
   const activeTasks = active(state);
   const open = openSlots(state);
   const overdue = activeTasks.filter((t) => isOverdue(t, today)).length;
+  const done = recentlyCompleted(state, today);
 
   return (
     <>
@@ -50,7 +51,8 @@ export default function Backlog() {
             <QuickAdd autoFocus={add === '1'} />
           </View>
         }
-        ListEmptyComponent={<Text style={st.empty}>Your backlog is empty. Add anything you might do later.</Text>}
+        ListEmptyComponent={done.length ? undefined : <Text style={st.empty}>Your backlog is empty. Add anything you might do later.</Text>}
+        ListFooterComponent={done.length ? <View style={{ marginTop: items.length ? 0 : 8 }}>{done.map((t) => <DoneRow key={t.id} task={t} />)}</View> : undefined}
       />
     </>
   );
@@ -58,27 +60,52 @@ export default function Backlog() {
 
 function QuickAdd({ autoFocus }: { autoFocus: boolean }) {
   const [text, setText] = useState('');
+  const [focused, setFocused] = useState(false);
   const submit = () => {
     if (text.trim() && !act((s) => addTask(s, text))) setText('');
   };
+  const focus = (on: boolean) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setFocused(on);
+  };
   return (
-    <GlassView isInteractive style={[st.quick, !isLiquidGlassAvailable() && { backgroundColor: colors.surface }]}>
+    <GlassView isInteractive style={[st.quick, focused && st.quickOpen, !isLiquidGlassAvailable() && { backgroundColor: colors.surface }]}>
       <TextInput
         value={text}
         onChangeText={setText}
         placeholder="New task"
         placeholderTextColor={colors.tertiary}
+        multiline // wraps long titles; Return still adds the task
         returnKeyType="done"
         submitBehavior="submit" // keep the keyboard up for adding several in a row
         onSubmitEditing={submit}
+        onFocus={() => focus(true)}
+        onBlur={() => focus(false)}
         autoFocus={autoFocus}
-        style={st.quickInput}
+        style={[st.quickInput, focused && { minHeight: 66 }]}
         accessibilityLabel="New task"
       />
       <Pressable onPress={submit} disabled={!text.trim()} style={[st.quickBtn, { backgroundColor: text.trim() ? colors.label : colors.fill }]} accessibilityLabel="Add task">
         <Icon name="arrow.up" size={15} color={text.trim() ? colors.onLabel : colors.secondary} />
       </Pressable>
     </GlassView>
+  );
+}
+
+/** A task finished in the last 7 days: dimmed and struck through; tapping the check undoes it. */
+function DoneRow({ task }: { task: Task }) {
+  const undo = () => {
+    if (!act((s) => uncomplete(s, task.id))) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+  return (
+    <View style={st.row}>
+      <Pressable onPress={undo} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Mark ${task.title} as not done`}>
+        <Icon name="checkmark.circle.fill" size={26} color={colors.tertiary} />
+      </Pressable>
+      <View style={st.rowBody}>
+        <Text style={[st.rowTitle, st.doneTitle]}>{task.title}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -139,12 +166,14 @@ const st = StyleSheet.create({
   meterRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4, paddingTop: 4 },
   meterText: { ...rounded, fontSize: 15, fontWeight: '600', color: colors.secondary },
   fullNote: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.surface, borderRadius: 20, padding: 14, paddingHorizontal: 16 },
-  quick: { flexDirection: 'row', alignItems: 'center', height: 50, borderRadius: 25, paddingLeft: 20, paddingRight: 7 },
-  quickInput: { flex: 1, fontSize: 17, color: colors.label },
+  quick: { flexDirection: 'row', alignItems: 'center', minHeight: 50, borderRadius: 25, paddingLeft: 20, paddingRight: 7 },
+  quickOpen: { alignItems: 'flex-end', borderRadius: 22, paddingTop: 10, paddingBottom: 7 },
+  quickInput: { flex: 1, fontSize: 17, lineHeight: 22, color: colors.label, paddingTop: 0, paddingBottom: 0, marginVertical: 7 },
   quickBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingLeft: 20, backgroundColor: colors.bg },
   rowBody: { flex: 1, minHeight: 56, paddingVertical: 14, paddingRight: 20, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
   rowTitle: { fontSize: 17, lineHeight: 22, color: colors.label },
+  doneTitle: { color: colors.tertiary, textDecorationLine: 'line-through' },
   rowNotes: { fontSize: 15, lineHeight: 19, color: colors.secondary, marginTop: 1 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
   action: { width: 52, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
