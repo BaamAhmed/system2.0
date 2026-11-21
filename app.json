@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "system2.0",
+    "name": "System 2.0",
     "slug": "system2",
     "scheme": "system2",
     "version": "1.0.0",
@@ -12,17 +12,18 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.system2.app",
+      "bundleIdentifier": "com.baamahmed.systemtwo",
       "entitlements": {
         "com.apple.security.application-groups": [
-          "group.dev.system2.app.shared"
+          "group.com.baamahmed.systemtwo.shared"
         ]
       },
       "icon": {
         "light": "./assets/icon.png",
         "dark": "./assets/icon-dark.png",
         "tinted": "./assets/icon-tinted.png"
-      }
+      },
+      "appleTeamId": "4GEZC329N5"
     },
     "plugins": [
       "expo-router",
