@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import Animated, { FadeInDown, FadeInUp, FadeOutUp } from 'react-native-reanimated';
+import Animated, { Easing, FadeIn, FadeInDown, FadeInUp, FadeOut, FadeOutUp, LayoutAnimationConfig } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import {
   active, complete, dueLabel, extendTimer, formatClock, formatDuration, isTimeUp, pauseTimer, resumeTimer, startTimer,
@@ -87,10 +88,14 @@ function TickRuler({ value, onChange }: { value: number; onChange: (m: number) =
   );
 }
 
+const ENTER_MS = 260;
+const EXIT_MS = 200;
+
 const formatMinutes = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}`);
 
 /** The floating timer panel: start a timer, or control the running one. */
 export function TimerPanel({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
   const state = useAppState();
   const timer = state.timer;
   const now = useNow(visible && !!timer);
@@ -101,13 +106,32 @@ export function TimerPanel({ visible, onClose }: { visible: boolean; onClose: ()
       onPanResponderRelease: (_, g) => g.dy < -30 && onClose(),
     }),
   ).current;
+  // Keep the Modal up until the exit animation has played.
+  const [mounted, setMounted] = useState(visible);
+  useEffect(() => {
+    if (visible) return setMounted(true);
+    const id = setTimeout(() => setMounted(false), EXIT_MS);
+    return () => clearTimeout(id);
+  }, [visible]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.18)' }]} onPress={onClose} accessibilityLabel="Close timer" />
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       {visible && (
-        <Animated.View entering={FadeInUp.springify().damping(18)} style={st.panel} {...swipe.panHandlers}>
-          {!timer ? <StartPanel /> : isTimeUp(timer, now) ? <DonePanel now={now} onClose={onClose} /> : <RunningPanel now={now} />}
+        <Animated.View entering={FadeIn.duration(ENTER_MS)} exiting={FadeOut.duration(EXIT_MS)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.18)' }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close timer" />
+        </Animated.View>
+      )}
+      {visible && (
+        <Animated.View
+          entering={FadeInUp.duration(ENTER_MS).easing(Easing.out(Easing.cubic))}
+          exiting={FadeOutUp.duration(EXIT_MS).easing(Easing.in(Easing.cubic))}
+          style={[st.panel, { top: insets.top }]}
+          {...swipe.panHandlers}
+        >
+          {/* Digits only roll when they change, not as the panel arrives. */}
+          <LayoutAnimationConfig skipEntering>
+            {!timer ? <StartPanel /> : isTimeUp(timer, now) ? <DonePanel now={now} onClose={onClose} /> : <RunningPanel now={now} />}
+          </LayoutAnimationConfig>
         </Animated.View>
       )}
     </Modal>
@@ -131,13 +155,10 @@ function StartPanel() {
           <TaskChip key={t.id} task={t} selected={t.id === taskId} onPress={() => setTaskId(t.id)} />
         ))}
       </ScrollView>
-      <Text style={[st.readout]} accessibilityRole="text">
-        {minutes < 60 ? (
-          <>{minutes}<Text style={st.unit}> min</Text></>
-        ) : (
-          <>{Math.floor(minutes / 60)}<Text style={st.unit}> hr</Text>{minutes % 60 ? <> {minutes % 60}<Text style={st.unit}> min</Text></> : null}</>
-        )}
-      </Text>
+      <View style={st.readout} accessible accessibilityLabel={formatMinutes(minutes)}>
+        {minutes >= 60 && <><RollingClock text={`${Math.floor(minutes / 60)}`} size={36} /><Text style={st.unit}> hr </Text></>}
+        {minutes % 60 > 0 && <><RollingClock text={`${minutes % 60}`} size={36} /><Text style={st.unit}> min</Text></>}
+      </View>
       <View style={{ marginTop: 6 }}>
         <TickRuler value={minutes} onChange={setMinutes} />
       </View>
@@ -266,11 +287,11 @@ function RoundButton({ icon, light, label, onPress }: { icon: any; light?: boole
 }
 
 const st = StyleSheet.create({
-  panel: { position: 'absolute', top: 10, left: 10, right: 10, borderRadius: 44, backgroundColor: ink.bg, paddingHorizontal: 22, paddingVertical: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.18)', boxShadow: '0 18px 50px rgba(0,0,0,0.35)' },
+  panel: { position: 'absolute', left: 10, right: 10, borderRadius: 44, backgroundColor: ink.bg, paddingHorizontal: 22, paddingVertical: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.18)', boxShadow: '0 18px 50px rgba(0,0,0,0.35)' },
   sec: { fontSize: 13, lineHeight: 18, color: ink.sec },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 7, height: 34, paddingHorizontal: 14, borderRadius: 17, maxWidth: 220 },
-  readout: { ...rounded, textAlign: 'center', fontSize: 36, lineHeight: 40, fontWeight: '700', color: ink.label, marginTop: 16, letterSpacing: -0.5 },
-  unit: { fontSize: 20, fontWeight: '600', color: ink.sec },
+  readout: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', marginTop: 16 },
+  unit: { ...rounded, fontSize: 20, lineHeight: 24, marginBottom: 2, fontWeight: '600', color: ink.sec },
   primary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF' },
   primaryText: { fontSize: 16, fontWeight: '600', color: '#000' },
   secondary: { alignItems: 'center', justifyContent: 'center', height: 48, borderRadius: 24, backgroundColor: ink.fill },

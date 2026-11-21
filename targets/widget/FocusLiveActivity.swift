@@ -7,7 +7,7 @@ struct FocusLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: FocusActivityAttributes.self) { context in
       FocusActivityCard(state: context.state, timeUp: timeUp(context))
-        .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 18)
+        .padding(16)
         .activityBackgroundTint(Color.black.opacity(0.82))
         .activitySystemActionForegroundColor(.white)
         .widgetURL(URL(string: "system2://focus?timer=1"))
@@ -37,29 +37,30 @@ struct FocusLiveActivity: Widget {
 }
 
 private let secondary = Color(white: 0.92).opacity(0.6)
-private let track = Color.white.opacity(0.14)
 
+/// Both presentations are capped at 160pt tall by iOS, which squeezes or clips anything taller.
 struct FocusActivityCard: View {
   let state: FocusActivityAttributes.ContentState
   let timeUp: Bool
   var compact = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: compact ? 14 : 18) {
-      HStack(alignment: .top, spacing: 16) {
-        VStack(alignment: .leading, spacing: 4) {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 3) {
           HStack(alignment: .firstTextBaseline, spacing: 7) {
             Circle().fill(state.tagColor.flatMap(Color.init(hex:)) ?? .white).frame(width: 8, height: 8)
               .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
             Text(state.title)
               .font(.system(size: compact ? 15 : 16, weight: .semibold))
-              .lineLimit(3)  // long titles wrap instead of truncating
-              .fixedSize(horizontal: false, vertical: true)
+              .lineLimit(2)
           }
           Group {
             Text(meta)
-            Label { Text("\(duration(state.totalSec)) on this task") } icon: { Image(systemName: "clock") }
-              .labelStyle(TightLabel())
+            if !compact {
+              Label { Text("\(duration(state.totalSec)) on this task") } icon: { Image(systemName: "clock") }
+                .labelStyle(TightLabel())
+            }
           }
           .font(.system(size: compact ? 12 : 13))
           .foregroundStyle(secondary)
@@ -77,14 +78,14 @@ struct FocusActivityCard: View {
         .foregroundStyle(state.endsAt == nil && !timeUp ? secondary : .white)
       }
       HStack(spacing: 14) {
-        FocusProgress(state: state, timeUp: timeUp).frame(height: 5)
+        FocusProgress(state: state, timeUp: timeUp)
         if #available(iOS 17.0, *), !timeUp {
           // Pause / resume only; stopping or adding time happens in the app.
           Button(intent: ToggleFocusIntent()) {
             Image(systemName: state.endsAt == nil ? "play.fill" : "pause.fill")
-              .font(.system(size: 14, weight: .bold))
+              .font(.system(size: 13, weight: .bold))
               .foregroundStyle(.black)
-              .frame(width: compact ? 34 : 36, height: compact ? 34 : 36)
+              .frame(width: compact ? 30 : 32, height: compact ? 30 : 32)
               .background(Circle().fill(.white))
           }
           .buttonStyle(.plain)
@@ -103,18 +104,23 @@ struct FocusCountdown: View {
   let state: FocusActivityAttributes.ContentState
   let timeUp: Bool
   var body: some View {
-    Group {
-      if timeUp {
-        Text("0:00")
-      } else if let ends = state.endsAt {
-        Text(timerInterval: ends.addingTimeInterval(-Double(state.plannedSec))...ends, countsDown: true)
-      } else {
-        Text(clock(state.remainingSec))
+    // A timer Text claims all the width it's offered, so a hidden clock of the starting length sets the width.
+    Text(clock(timeUp ? 0 : state.endsAt.map { max(0, Int($0.timeIntervalSinceNow)) } ?? state.remainingSec))
+      .hidden()
+      .overlay(alignment: .trailing) {
+        Group {
+          if timeUp {
+            Text("0:00")
+          } else if let ends = state.endsAt {
+            Text(timerInterval: ends.addingTimeInterval(-Double(state.plannedSec))...ends, countsDown: true)
+          } else {
+            Text(clock(state.remainingSec))
+          }
+        }
+        .contentTransition(.numericText(countsDown: true))
+        .multilineTextAlignment(.trailing)
       }
-    }
-    .monospacedDigit()
-    .contentTransition(.numericText(countsDown: true))
-    .multilineTextAlignment(.trailing)
+      .monospacedDigit()
   }
 }
 
@@ -135,7 +141,6 @@ struct FocusProgress: View {
     }
     .progressViewStyle(.linear)
     .tint(.white)
-    .background(Capsule().fill(track))
   }
 }
 
