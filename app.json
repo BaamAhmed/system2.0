@@ -17,13 +17,30 @@
         "com.apple.security.application-groups": [
           "group.dev.system2.app.shared"
         ]
+      },
+      "icon": {
+        "light": "./assets/icon.png",
+        "dark": "./assets/icon-dark.png",
+        "tinted": "./assets/icon-tinted.png"
       }
     },
     "plugins": [
       "expo-router",
       "@react-native-community/datetimepicker",
       "expo-sqlite",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/splash-dark.png",
+            "backgroundColor": "#000000"
+          }
+        }
+      ]
     ]
   }
 }
