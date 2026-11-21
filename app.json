@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "system2.0",
+    "slug": "system2",
+    "scheme": "system2",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "platforms": ["ios"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.system2.app"
+    }
+  }
+}
