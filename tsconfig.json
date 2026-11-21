@@ -1,6 +1,10 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
-  }
+    "strict": true,
+    // lets the domain tests import './domain.ts' so Node can run them without a build step
+    "allowImportingTsExtensions": true
+  },
+  // tests run under Node, not the app bundle
+  "exclude": ["**/*.test.ts", "node_modules"]
 }
